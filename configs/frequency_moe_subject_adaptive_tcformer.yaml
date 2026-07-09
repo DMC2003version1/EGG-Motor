@@ -1,0 +1,92 @@
+# general
+dataset_name: ""   # options: "bcic2a", "bcic2b", "bcic3", "reh_mi", or "hgd".
+subject_ids: "all"
+max_epochs: 500
+max_epochs_2b: 500
+max_epochs_loso: 125
+max_epochs_loso_hgd: 77
+seed: 0
+
+# preprocessing
+z_scale: True
+interaug: True
+preprocessing:
+  bcic2a:
+    sfreq: 250
+    low_cut: null
+    high_cut: null
+    start: 0.0
+    stop: 0.0
+    batch_size: 48
+  bcic2b:
+    sfreq: 250
+    low_cut: null
+    high_cut: null
+    start: 0.0
+    stop: -0.5
+    batch_size: 48
+  bcic3:
+    sfreq: 100
+    low_cut: 0
+    high_cut: 40
+    start: 0.0
+    stop: 0.0
+    batch_size: 28
+    channel_selection: True
+  reh_mi:
+    sfreq: 128
+    low_cut: 4
+    high_cut: 50
+    start: 0.0
+    stop: 0.0
+    batch_size: 48
+  hgd:
+    sfreq: 250
+    low_cut: 4
+    high_cut: null
+    start: 0.0
+    stop: 0.0
+    batch_size: 48
+    remove_artifacts: True
+
+# model
+model: "FrequencyMoESubjectAdaptiveTCFormer"
+model_kwargs:
+  F1: 32
+  temp_kernel_lengths: [20, 32, 64]
+  d_group: 16
+  D: 2
+  pool_length_1: 8
+  pool_length_2: 7
+  dropout_conv: 0.4
+  use_group_attn: True
+
+  # Frequency-aware MoE parameters
+  sfreq: 250
+  moe_kernel_sizes: [63, 47, 31, 15]
+  moe_dropout: 0.1
+  moe_gate_hidden_dim: 32
+
+  # Transformer parameters
+  q_heads: 4
+  kv_heads: 2
+  trans_depth: 5
+  trans_dropout: 0.4
+
+  # Subject-conditioned HyperAdapter parameters
+  subject_emb_dim: 32
+  adapter_bottleneck_ratio: 4
+  adapter_dropout: 0.1
+
+  # TCN head parameters
+  tcn_depth: 2
+  kernel_length_tcn: 4
+  dropout_tcn: 0.3
+
+  lr: 0.0009
+  beta_1: 0.5
+  weight_decay: 0.001
+  optimizer: "adam"
+  scheduler: True
+  warmup_epochs: 20
+  warmup_epochs_loso: 3

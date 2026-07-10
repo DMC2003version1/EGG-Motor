@@ -1,5 +1,6 @@
 from .atcnet import ATCNet
 from .tcformer import TCFormer
+from .graph_spatial_tcformer import GraphSpatialTCFormer
 from .basenet import BaseNet
 from .eegconformer import EEGConformer
 from .eegnet import EEGNet

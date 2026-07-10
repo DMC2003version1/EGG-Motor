@@ -162,7 +162,7 @@ def parse_arguments():
     parser.add_argument("--model", type=str, default="tcformer",
         help = "Name of the model to use. Options:\n"
                "tcformer, atcnet, d-atcnet, atcnet_2_0, eegnet, shallownet, basenet\n"
-                "eegtcnet, eegconformer, tsseffnet, eegdeformer, sst_dpn, ctnet, mscformer"
+               "eegtcnet, eegconformer, tsseffnet, eegdeformer, sst_dpn, ctnet, mscformer, graph_spatial_tcformer"
     )        
     parser.add_argument("--dataset", type=str, default="bcic2a", 
         help="Name of the dataset to use."

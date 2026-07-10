@@ -1,5 +1,6 @@
 from models import (
     TCFormer,
+    GraphSpatialTCFormer,
     ATCNet,
     BaseNet,
     # SST_DPN,
@@ -17,6 +18,7 @@ from models import (
 model_dict = dict(
     # SST_DPN=SST_DPN,
     TCFormer=TCFormer,
+    GraphSpatialTCFormer=GraphSpatialTCFormer,
     ATCNet=ATCNet,
     BaseNet=BaseNet,
     EEGConformer=EEGConformer,

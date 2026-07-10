@@ -1,7 +1,7 @@
 """Topology-aware spatial graph variant of TCFormer.
 
-The graph replaces the spatial depth-wise convolution: electrodes are nodes and
-nearby electrodes exchange temporal-CNN features through masked graph attention.
+The dual spatial encoder combines depth-wise convolution with topology-aware
+graph attention, then uses learned temporal attention pooling before GQA.
 """
 import torch
 from torch import nn
@@ -59,30 +59,55 @@ class TopologyGraphSpatialEncoder(nn.Module):
         return nodes.mean(dim=2).permute(0, 2, 1).unsqueeze(2)
 
 
+class LocalTemporalAttentionPool(nn.Module):
+    """Learn a separate importance distribution inside each pooling window."""
+    def __init__(self, n_features, window_size):
+        super().__init__()
+        self.window_size = window_size
+        self.score = nn.Conv2d(n_features, n_features, (1, 1), groups=n_features)
+
+    def forward(self, x):  # (B, F, 1, T)
+        usable = (x.shape[-1] // self.window_size) * self.window_size
+        if usable == 0:
+            return x
+        x = x[..., :usable]
+        scores = self.score(x)
+        shape = (*x.shape[:-1], usable // self.window_size, self.window_size)
+        values = x.reshape(shape)
+        weights = scores.reshape(shape).softmax(dim=-1)
+        return (weights * values).sum(dim=-1)
+
+
 class GraphMultiKernelConvBlock(MultiKernelConvBlock):
-    """TCFormer temporal front-end with graph attention in place of spatial CNN."""
+    """Parallel convolution/graph spatial paths with gated fusion and token pooling."""
     def __init__(self, n_channels, *args, graph_dropout=0.1, **kwargs):
         super().__init__(n_channels, *args, **kwargs)
         n_groups = len(self.temporal_convs)
         temporal_features = self.temporal_convs[0][1].out_channels * n_groups
-        # Remove the inherited spatial conv; graph output is expanded afterwards.
-        self.channel_DW_conv = TopologyGraphSpatialEncoder(
+        # Retain TCFormer's spatial convolution as one path.
+        self.spatial_conv = self.channel_DW_conv
+        self.graph_spatial = TopologyGraphSpatialEncoder(
             n_channels, temporal_features, dropout=graph_dropout
         )
+        del self.channel_DW_conv
         F2 = temporal_features * kwargs.get("D", 2)
         self.graph_expand = nn.Sequential(
             nn.Conv2d(temporal_features, F2, (1, 1), bias=False, groups=temporal_features),
             nn.BatchNorm2d(F2), nn.ELU(),
         )
+        self.fusion_gate = nn.Conv2d(2 * F2, F2, (1, 1), bias=True)
+        self.pool1 = LocalTemporalAttentionPool(F2, kwargs.get("pool_length_1", 8))
+        self.pool2 = LocalTemporalAttentionPool(self.d_model, kwargs.get("pool_length_2", 7))
         glorot_weight_zero_bias(self.graph_expand)
 
     def forward(self, x):
         x = self.rearrange(x)
-        x = torch.cat([conv(x) for conv in self.temporal_convs], dim=1)
-        x = self.channel_DW_conv(x)
-        x = self.graph_expand(x)
-        x = self.pool1(x)
-        x = self.drop1(x)
+        temporal = torch.cat([conv(x) for conv in self.temporal_convs], dim=1)
+        conv_features = self.spatial_conv(temporal)
+        graph_features = self.graph_expand(self.graph_spatial(temporal))
+        gate = torch.sigmoid(self.fusion_gate(torch.cat((conv_features, graph_features), dim=1)))
+        x = gate * conv_features + (1.0 - gate) * graph_features
+        x = self.drop1(self.pool1(x))
         if self.use_channel_reduction_2:
             x = self.channel_reduction_2(x)
         x = self.temporal_conv_2(x)

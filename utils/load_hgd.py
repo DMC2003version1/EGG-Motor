@@ -6,9 +6,13 @@ from braindecode.preprocessing import (
     Preprocessor,
     create_windows_from_events,
     preprocess,
-    scale,
 )
 import numpy as np
+
+
+def scale(data, factor):
+    """Version-independent array scaling for Braindecode preprocessors."""
+    return data * factor
 
 
 def load_hgd(subject_ids: list, preprocessing_dict: Dict = None,

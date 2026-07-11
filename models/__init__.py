@@ -1,5 +1,6 @@
 from .atcnet import ATCNet
 from .tcformer import TCFormer
+from .sinc_gated_tcformer import SincGatedTCFormer
 from .basenet import BaseNet
 from .eegconformer import EEGConformer
 from .eegnet import EEGNet

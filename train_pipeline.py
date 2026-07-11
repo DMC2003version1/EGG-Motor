@@ -46,6 +46,10 @@ def train_and_test(config):
 
     config["model_kwargs"]["n_channels"] = datamodule_cls.channels
     config["model_kwargs"]["n_classes"] = datamodule_cls.classes
+    # Sinc-based temporal filters need the effective sampling rate.  Other
+    # models do not expose this key, so their configuration is unchanged.
+    if "sample_rate" in config["model_kwargs"]:
+        config["model_kwargs"]["sample_rate"] = config["preprocessing"]["sfreq"]
 
     # Parse subject IDs from config
     subj_cfg = config["subject_ids"]
@@ -162,7 +166,7 @@ def parse_arguments():
     parser.add_argument("--model", type=str, default="tcformer",
         help = "Name of the model to use. Options:\n"
                "tcformer, atcnet, d-atcnet, atcnet_2_0, eegnet, shallownet, basenet\n"
-                "eegtcnet, eegconformer, tsseffnet, eegdeformer, sst_dpn, ctnet, mscformer"
+               "eegtcnet, eegconformer, tsseffnet, eegdeformer, sst_dpn, ctnet, mscformer, sinc_gated_tcformer"
     )        
     parser.add_argument("--dataset", type=str, default="bcic2a", 
         help="Name of the dataset to use."

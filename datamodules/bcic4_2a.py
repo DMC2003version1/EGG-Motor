@@ -10,6 +10,16 @@ from sklearn.model_selection import train_test_split
 import os
 
 
+def _split_sessions(dataset):
+    """Return train/test sessions across old and current MOABB naming schemes."""
+    sessions = dataset.split("session")
+    train_key = "session_T" if "session_T" in sessions else "0train"
+    test_key = "session_E" if "session_E" in sessions else "1test"
+    if train_key not in sessions or test_key not in sessions:
+        raise KeyError(f"Unsupported BCIC IV-2a session labels: {list(sessions.keys())}")
+    return sessions[train_key], sessions[test_key]
+
+
 class BCICIV2a(BaseDataModule):
     all_subject_ids = list(range(1, 10))
     class_names = ["feet", "hand(L)", "hand(R)", "tongue"]
@@ -27,8 +37,7 @@ class BCICIV2a(BaseDataModule):
         if self.dataset is None:
             self.prepare_data()
         # split the data
-        splitted_ds = self.dataset.split("session")
-        train_dataset, test_dataset = splitted_ds["session_T"], splitted_ds["session_E"]
+        train_dataset, test_dataset = _split_sessions(self.dataset)
 
         # load the data
         X = np.concatenate(
@@ -70,9 +79,7 @@ class BCICIV2aTVT(BaseDataModule):
             self.prepare_data()
 
         # Split by session
-        splitted_ds = self.dataset.split("session")
-        session1 = splitted_ds["session_T"]  # training + validation
-        session2 = splitted_ds["session_E"]  # testing only
+        session1, test_dataset = _split_sessions(self.dataset)  # training + validation, test
         
         # Load session 1 data
         X = np.concatenate([run.windows.load_data()._data for run in session1.datasets], axis=0)
@@ -83,8 +90,8 @@ class BCICIV2aTVT(BaseDataModule):
             X, y, test_size=0.2, random_state=self.preprocessing_dict.get("seed", 42), stratify=y)
 
         # Load session 2 as test set
-        X_test = np.concatenate([run.windows.load_data()._data for run in session2.datasets], axis=0)
-        y_test = np.concatenate([run.y for run in session2.datasets], axis=0)
+        X_test = np.concatenate([run.windows.load_data()._data for run in test_dataset.datasets], axis=0)
+        y_test = np.concatenate([run.y for run in test_dataset.datasets], axis=0)
 
         # scale data
         if self.preprocessing_dict["z_scale"]:
@@ -128,11 +135,11 @@ class BCICIV2aLOSO(BCICIV2a):
         splitted_ds = self.dataset.split("subject")
         train_subjects = [
             subj_id for subj_id in self.all_subject_ids if subj_id != self.subject_id]
-        train_datasets = [splitted_ds[str(subj_id)].split("session")["session_T"]
+        train_datasets = [_split_sessions(splitted_ds[str(subj_id)])[0]
                             for subj_id in train_subjects]
-        val_datasets = [splitted_ds[str(subj_id)].split("session")["session_E"]
+        val_datasets = [_split_sessions(splitted_ds[str(subj_id)])[1]
                         for subj_id in train_subjects]
-        test_dataset = splitted_ds[str(self.subject_id)].split("session")["session_E"]
+        test_dataset = _split_sessions(splitted_ds[str(self.subject_id)])[1]
 
         # load the data
         X = np.concatenate([run.windows.load_data()._data for train_dataset in

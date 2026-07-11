@@ -3,6 +3,7 @@ from typing import Optional
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data.dataloader import DataLoader
+from braindecode.datasets.base import BaseConcatDataset
 
 from .base import BaseDataModule
 from utils.load_bcic4 import load_bcic4
@@ -18,6 +19,17 @@ def _split_sessions(dataset):
     if train_key not in sessions or test_key not in sessions:
         raise KeyError(f"Unsupported BCIC IV-2a session labels: {list(sessions.keys())}")
     return sessions[train_key], sessions[test_key]
+
+
+def _load_xy(dataset):
+    """Materialize a Braindecode split without depending on private `.windows` APIs."""
+    xs, ys = [], []
+    for run in dataset.datasets:
+        for index in range(len(run)):
+            sample = run[index]
+            xs.append(sample[0])
+            ys.append(sample[1])
+    return np.stack(xs), np.asarray(ys)
 
 
 class BCICIV2a(BaseDataModule):
@@ -40,12 +52,8 @@ class BCICIV2a(BaseDataModule):
         train_dataset, test_dataset = _split_sessions(self.dataset)
 
         # load the data
-        X = np.concatenate(
-            [run.windows.load_data()._data for run in train_dataset.datasets], axis=0)
-        y = np.concatenate([run.y for run in train_dataset.datasets], axis=0)
-        X_test = np.concatenate(
-            [run.windows.load_data()._data for run in test_dataset.datasets], axis=0)
-        y_test = np.concatenate([run.y for run in test_dataset.datasets], axis=0)
+        X, y = _load_xy(train_dataset)
+        X_test, y_test = _load_xy(test_dataset)
 
         # scale data
         if self.preprocessing_dict["z_scale"]:
@@ -82,16 +90,14 @@ class BCICIV2aTVT(BaseDataModule):
         session1, test_dataset = _split_sessions(self.dataset)  # training + validation, test
         
         # Load session 1 data
-        X = np.concatenate([run.windows.load_data()._data for run in session1.datasets], axis=0)
-        y = np.concatenate([run.y for run in session1.datasets], axis=0)
+        X, y = _load_xy(session1)
 
         # Split session 1: 80% train, 20% validation
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=self.preprocessing_dict.get("seed", 42), stratify=y)
 
         # Load session 2 as test set
-        X_test = np.concatenate([run.windows.load_data()._data for run in test_dataset.datasets], axis=0)
-        y_test = np.concatenate([run.y for run in test_dataset.datasets], axis=0)
+        X_test, y_test = _load_xy(test_dataset)
 
         # scale data
         if self.preprocessing_dict["z_scale"]:
@@ -142,17 +148,9 @@ class BCICIV2aLOSO(BCICIV2a):
         test_dataset = _split_sessions(splitted_ds[str(self.subject_id)])[1]
 
         # load the data
-        X = np.concatenate([run.windows.load_data()._data for train_dataset in
-                            train_datasets for run in train_dataset.datasets], axis=0)
-        y = np.concatenate([run.y for train_dataset in train_datasets for run in
-                            train_dataset.datasets], axis=0)
-        X_val = np.concatenate([run.windows.load_data()._data for val_dataset in
-                            val_datasets for run in val_dataset.datasets], axis=0)
-        y_val = np.concatenate([run.y for val_dataset in val_datasets for run in
-                            val_dataset.datasets], axis=0)
-        X_test = np.concatenate([run.windows.load_data()._data for run in test_dataset.datasets],
-                                axis=0)
-        y_test = np.concatenate([run.y for run in test_dataset.datasets], axis=0)
+        X, y = _load_xy(BaseConcatDataset(train_datasets))
+        X_val, y_val = _load_xy(BaseConcatDataset(val_datasets))
+        X_test, y_test = _load_xy(test_dataset)
 
         # scale data
         if self.preprocessing_dict["z_scale"]:

@@ -1,5 +1,6 @@
-import os, time, yaml
+import os, time, yaml, gc
 import numpy as np
+import torch
 from pathlib import Path
 from datetime import datetime
 from argparse import ArgumentParser
@@ -15,6 +16,33 @@ from utils.misc     import visualize_model_graph, show_gpu_info
 from utils.get_datamodule_cls import get_datamodule_cls
 from utils.get_model_cls import get_model_cls
 from utils.seed import seed_everything
+
+
+def _release_fold_memory(trainer=None, model=None, datamodule=None, metrics_callback=None):
+    """Free trainer/model/data references so LOSO folds do not accumulate System RAM."""
+    if model is not None:
+        try:
+            model.cpu()
+        except Exception:
+            pass
+
+    if datamodule is not None:
+        for attr in ("dataset", "train_dataset", "val_dataset", "test_dataset"):
+            if hasattr(datamodule, attr):
+                setattr(datamodule, attr, None)
+
+    if metrics_callback is not None:
+        for attr in ("train_loss", "val_loss", "train_acc", "val_acc"):
+            if hasattr(metrics_callback, attr):
+                setattr(metrics_callback, attr, [])
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        try:
+            torch.cuda.ipc_collect()
+        except Exception:
+            pass
 
 # Set visible GPUs
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
@@ -117,7 +145,7 @@ def train_and_test(config):
 
         # compute & store this subject's confusion matrix
         # The [C × C] tensor is inside the LightningModule:
-        cm = model.test_confmat.numpy()
+        cm = model.test_confmat.detach().cpu().numpy().copy()
         all_confmats.append(cm)
 
         # plot per-subject if requested
@@ -140,6 +168,13 @@ def train_and_test(config):
         if config.get("save_checkpoint", False):
             ckpt_path = result_dir / f"checkpoints/subject_{subject_id}_model.ckpt"
             trainer.save_checkpoint(ckpt_path)
+
+        # Release fold-local objects before the next LOSO subject
+        _release_fold_memory(trainer, model, datamodule, metrics_callback)
+        del trainer, model, datamodule, metrics_callback
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
    
     # Summarize and save final results
     write_summary(result_dir, model_name, dataset_name, subject_ids, param_count,

@@ -175,6 +175,11 @@ class BCICIV2aLOSO(BCICIV2a):
         self.val_dataset = BaseDataModule._make_tensor_dataset(X_val, y_val)
         self.test_dataset = BaseDataModule._make_tensor_dataset(X_test, y_test)
 
+        # Drop raw MOABB windows after materializing tensors (avoids 2x System RAM in LOSO)
+        self.dataset = None
+        del train_arrays, val_arrays, train_datasets, val_datasets, test_dataset
+        del X, y, X_val, y_val, X_test, y_test, splitted_ds
+
         # self.train_dataset = BaseDataModule._make_tensor_dataset(X, y, 
         #                                                          preprocessing_dict=self.preprocessing_dict, mode="train")
         # self.val_dataset   = BaseDataModule._make_tensor_dataset(X_val, y_val, 
@@ -183,10 +188,4 @@ class BCICIV2aLOSO(BCICIV2a):
         #                                                          preprocessing_dict=self.preprocessing_dict, mode="test")
 
     def val_dataloader(self) -> DataLoader:
-        return DataLoader(self.val_dataset,
-                          batch_size=self.preprocessing_dict["batch_size"],
-                          num_workers=self.preprocessing_dict.get("num_workers", os.cpu_count() // 2),
-                          pin_memory=True,
-                        #   persistent_workers=True,          # ↩︎ keeps workers alive between epochs
-                        #   prefetch_factor=4                 # ↩︎ each worker preloads 4 future batches                          
-                        )
+        return DataLoader(self.val_dataset, **self._dataloader_kwargs(shuffle=False))
